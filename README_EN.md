@@ -4,6 +4,8 @@ Java SDK for PowerMem (JDK 11 / Maven).
 
 > This repository maintains **two README files**: `README_EN.md` and `README_CN.md`. Please keep them in sync.
 
+[README](README.md) | [中文](README_CN.md) | [PowerMem Main Repository](https://github.com/oceanbase/powermem)
+
 ## Quickstart
 
 ### 1) Prepare `.env`

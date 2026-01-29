@@ -29,10 +29,24 @@ public class AddMemoryRequest {
 
     public AddMemoryRequest() {}
 
+    public static AddMemoryRequest ofText(String text) {
+        AddMemoryRequest r = new AddMemoryRequest();
+        r.setText(text);
+        return r;
+    }
+
     public static AddMemoryRequest ofText(String text, String userId) {
         AddMemoryRequest r = new AddMemoryRequest();
         r.setText(text);
         r.setUserId(userId);
+        return r;
+    }
+
+    public static AddMemoryRequest ofText(String text, String userId, String agentId) {
+        AddMemoryRequest r = new AddMemoryRequest();
+        r.setText(text);
+        r.setUserId(userId);
+        r.setAgentId(agentId);
         return r;
     }
 

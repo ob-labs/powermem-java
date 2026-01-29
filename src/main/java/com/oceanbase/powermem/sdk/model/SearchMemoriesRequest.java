@@ -17,7 +17,7 @@ public class SearchMemoriesRequest {
     private String runId;
     // Python search has limit=30 by default; benchmark server doesn't send it, but we support it.
     @com.fasterxml.jackson.annotation.JsonProperty("limit")
-    private Integer limit;
+    private Integer limit = 30;
     @com.fasterxml.jackson.annotation.JsonProperty("threshold")
     private Double threshold;
     private int topK = 5;
@@ -26,10 +26,24 @@ public class SearchMemoriesRequest {
 
     public SearchMemoriesRequest() {}
 
+    public static SearchMemoriesRequest ofQuery(String query) {
+        SearchMemoriesRequest r = new SearchMemoriesRequest();
+        r.setQuery(query);
+        return r;
+    }
+
     public static SearchMemoriesRequest ofQuery(String query, String userId) {
         SearchMemoriesRequest r = new SearchMemoriesRequest();
         r.setQuery(query);
         r.setUserId(userId);
+        return r;
+    }
+
+    public static SearchMemoriesRequest ofQuery(String query, String userId, String agentId) {
+        SearchMemoriesRequest r = new SearchMemoriesRequest();
+        r.setQuery(query);
+        r.setUserId(userId);
+        r.setAgentId(agentId);
         return r;
     }
 

@@ -47,9 +47,6 @@ public class StorageAdapter {
         if (content == null || content.isBlank()) {
             throw new com.oceanbase.powermem.sdk.exception.ApiException("Cannot store empty content");
         }
-        if (userId == null || userId.isBlank()) {
-            throw new com.oceanbase.powermem.sdk.exception.ApiException("userId is required");
-        }
         java.time.Instant now = java.time.Instant.now();
         com.oceanbase.powermem.sdk.model.MemoryRecord record = new com.oceanbase.powermem.sdk.model.MemoryRecord();
         record.setId(idGenerator.nextId());

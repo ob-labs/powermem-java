@@ -1,6 +1,4 @@
-﻿C:\codes\powermemJavaSdk\powermem-java-sdk\src\main\java\com\powermem\sdk\Main.java
-C:\codes\powermemJavaSdk\powermem-java-sdk\src\main\java\com\powermem\sdk\api\AsyncMemoryApi.java
-C:\codes\powermemJavaSdk\powermem-java-sdk\src\main\java\com\powermem\sdk\api\McpToolApi.java
+﻿C:\codes\powermemJavaSdk\powermem-java-sdk\src\main\java\com\powermem\sdk\api\McpToolApi.java
 C:\codes\powermemJavaSdk\powermem-java-sdk\src\main\java\com\powermem\sdk\api\MemoryApi.java
 C:\codes\powermemJavaSdk\powermem-java-sdk\src\main\java\com\powermem\sdk\client\AsyncMemoryClient.java
 C:\codes\powermemJavaSdk\powermem-java-sdk\src\main\java\com\powermem\sdk\client\MemoryClient.java

@@ -167,5 +167,85 @@ public class MemoryE2eTest {
             assertNotNull(resp.getResults().get(0).getEvent());
         }
     }
+
+    @Test
+    void testCrudAndSearch_withAgentIdOnly_userIdOptional(@TempDir Path tmp) {
+        Memory mem = newMemoryWithTempSqlite(tmp.resolve("powermem_agent_scope.db"));
+
+        String agentId = "a_only";
+        String runId = "r_only";
+
+        // clean slate (no userId)
+        DeleteAllMemoriesRequest delAll = new DeleteAllMemoriesRequest();
+        delAll.setAgentId(agentId);
+        delAll.setRunId(runId);
+        mem.deleteAll(delAll);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("source", "junit");
+        meta.put("category", "preference");
+
+        AddMemoryRequest add = AddMemoryRequest.ofText("用户喜欢简洁的中文回答");
+        add.setInfer(false);
+        add.setAgentId(agentId);
+        add.setRunId(runId);
+        add.setMetadata(meta);
+
+        var addResp = mem.add(add);
+        assertNotNull(addResp);
+        assertNotNull(addResp.getResults());
+        assertEquals(1, addResp.getResults().size());
+        String id = addResp.getResults().get(0).getId();
+        assertNotNull(id);
+
+        // getAll should return 1 (scoped by agentId/runId, without userId)
+        GetAllMemoriesRequest getAll = new GetAllMemoriesRequest();
+        getAll.setAgentId(agentId);
+        getAll.setRunId(runId);
+        var allResp = mem.getAll(getAll);
+        assertNotNull(allResp);
+        assertNotNull(allResp.getResults());
+        assertEquals(1, allResp.getResults().size());
+
+        // search should find it (scoped by agentId/runId)
+        SearchMemoriesRequest search = SearchMemoriesRequest.ofQuery("简洁 中文");
+        search.setAgentId(agentId);
+        search.setRunId(runId);
+        search.setTopK(10);
+        Map<String, Object> filters = new HashMap<>();
+        filters.put("category", "preference");
+        search.setFilters(filters);
+
+        var searchResp = mem.search(search);
+        assertNotNull(searchResp);
+        assertNotNull(searchResp.getResults());
+        assertFalse(searchResp.getResults().isEmpty());
+        assertEquals(id, searchResp.getResults().get(0).getId());
+
+        // get by id without userId
+        GetMemoryRequest get = new GetMemoryRequest();
+        get.setAgentId(agentId);
+        get.setMemoryId(id);
+        var getResp = mem.get(get);
+        assertNotNull(getResp);
+        assertNotNull(getResp.getMemory());
+        assertEquals(id, getResp.getMemory().getId());
+
+        // update without userId
+        UpdateMemoryRequest upd = new UpdateMemoryRequest();
+        upd.setAgentId(agentId);
+        upd.setMemoryId(id);
+        upd.setNewContent("用户喜欢简洁、结构化的中文回答");
+        upd.setMetadata(meta);
+        var updResp = mem.update(upd);
+        assertNotNull(updResp);
+        assertNotNull(updResp.getMemory());
+        assertEquals(id, updResp.getMemory().getId());
+
+        // delete without userId
+        var delResp = mem.delete(id, null, agentId);
+        assertNotNull(delResp);
+        assertTrue(delResp.isDeleted());
+    }
 }
 

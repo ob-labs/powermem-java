@@ -37,7 +37,6 @@ public class Memory implements MemoryBase {
     @Override
     public com.oceanbase.powermem.sdk.model.AddMemoryResponse add(com.oceanbase.powermem.sdk.model.AddMemoryRequest request) {
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonNull(request, "AddMemoryRequest is required");
-        com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(request.getUserId(), "userId is required");
 
         java.util.List<com.oceanbase.powermem.sdk.model.Message> msgs = request.getMessages();
         String normalized = com.oceanbase.powermem.sdk.util.PowermemUtils.normalizeInput(request.getText(), msgs);
@@ -271,7 +270,6 @@ public class Memory implements MemoryBase {
     @Override
     public com.oceanbase.powermem.sdk.model.SearchMemoriesResponse search(com.oceanbase.powermem.sdk.model.SearchMemoriesRequest request) {
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonNull(request, "SearchMemoriesRequest is required");
-        com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(request.getUserId(), "userId is required");
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(request.getQuery(), "query is required");
 
         int limit = request.getLimit() != null && request.getLimit() > 0 ? request.getLimit() : request.getTopK();
@@ -389,7 +387,6 @@ public class Memory implements MemoryBase {
     @Override
     public com.oceanbase.powermem.sdk.model.UpdateMemoryResponse update(com.oceanbase.powermem.sdk.model.UpdateMemoryRequest request) {
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonNull(request, "UpdateMemoryRequest is required");
-        com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(request.getUserId(), "userId is required");
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(request.getMemoryId(), "memoryId is required");
 
         com.oceanbase.powermem.sdk.model.MemoryRecord updated = storage.updateMemory(
@@ -400,7 +397,6 @@ public class Memory implements MemoryBase {
     @Override
     public com.oceanbase.powermem.sdk.model.GetMemoryResponse get(com.oceanbase.powermem.sdk.model.GetMemoryRequest request) {
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonNull(request, "GetMemoryRequest is required");
-        com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(request.getUserId(), "userId is required");
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(request.getMemoryId(), "memoryId is required");
         com.oceanbase.powermem.sdk.model.MemoryRecord r = vectorStore.get(request.getMemoryId(), request.getUserId(), request.getAgentId());
         if (r != null && plugin != null && plugin.isEnabled()) {
@@ -442,7 +438,6 @@ public class Memory implements MemoryBase {
 
     @Override
     public com.oceanbase.powermem.sdk.model.DeleteMemoryResponse delete(String memoryId, String userId, String agentId) {
-        com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(userId, "userId is required");
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(memoryId, "memoryId is required");
         boolean deleted = storage.deleteMemory(memoryId, userId, agentId);
         return new com.oceanbase.powermem.sdk.model.DeleteMemoryResponse(deleted);
@@ -451,7 +446,6 @@ public class Memory implements MemoryBase {
     @Override
     public com.oceanbase.powermem.sdk.model.GetAllMemoriesResponse getAll(com.oceanbase.powermem.sdk.model.GetAllMemoriesRequest request) {
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonNull(request, "GetAllMemoriesRequest is required");
-        com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(request.getUserId(), "userId is required");
         java.util.List<com.oceanbase.powermem.sdk.model.MemoryRecord> list = storage.getAllMemories(
                 request.getUserId(), request.getAgentId(), request.getRunId(), request.getLimit(), request.getOffset());
         com.oceanbase.powermem.sdk.model.GetAllMemoriesResponse resp = new com.oceanbase.powermem.sdk.model.GetAllMemoriesResponse(list);
@@ -487,7 +481,6 @@ public class Memory implements MemoryBase {
     public com.oceanbase.powermem.sdk.model.DeleteAllMemoriesResponse deleteAll(
             com.oceanbase.powermem.sdk.model.DeleteAllMemoriesRequest request) {
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonNull(request, "DeleteAllMemoriesRequest is required");
-        com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(request.getUserId(), "userId is required");
         int deleted = storage.clearMemories(request.getUserId(), request.getAgentId(), request.getRunId());
         return new com.oceanbase.powermem.sdk.model.DeleteAllMemoriesResponse(deleted);
     }
