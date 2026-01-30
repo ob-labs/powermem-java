@@ -12,6 +12,7 @@ package com.oceanbase.powermem.sdk.core;
 public class Memory implements MemoryBase {
     private final com.oceanbase.powermem.sdk.config.MemoryConfig config;
     private final com.oceanbase.powermem.sdk.storage.base.VectorStore vectorStore;
+    private final com.oceanbase.powermem.sdk.storage.base.GraphStore graphStore;
     private final com.oceanbase.powermem.sdk.integrations.embeddings.Embedder embedder;
     private final com.oceanbase.powermem.sdk.intelligence.IntelligenceManager intelligence;
     private final com.oceanbase.powermem.sdk.integrations.llm.LLM llm;
@@ -32,11 +33,16 @@ public class Memory implements MemoryBase {
         this.intelligence = new com.oceanbase.powermem.sdk.intelligence.IntelligenceManager(this.config.getIntelligentMemory());
         this.plugin = new com.oceanbase.powermem.sdk.intelligence.plugin.EbbinghausIntelligencePlugin(this.config.getIntelligentMemory());
         this.reranker = com.oceanbase.powermem.sdk.integrations.rerank.RerankFactory.fromConfig(this.config.getReranker());
+        this.graphStore = com.oceanbase.powermem.sdk.storage.factory.GraphStoreFactory.fromConfig(
+                this.config.getGraphStore(), this.embedder, this.llm);
     }
 
     @Override
     public com.oceanbase.powermem.sdk.model.AddMemoryResponse add(com.oceanbase.powermem.sdk.model.AddMemoryRequest request) {
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonNull(request, "AddMemoryRequest is required");
+
+        // Graph store (optional): add raw conversation text and return relations summary.
+        java.util.Map<String, Object> graphResult = maybeAddToGraph(request);
 
         java.util.List<com.oceanbase.powermem.sdk.model.Message> msgs = request.getMessages();
         String normalized = com.oceanbase.powermem.sdk.util.PowermemUtils.normalizeInput(request.getText(), msgs);
@@ -67,10 +73,15 @@ public class Memory implements MemoryBase {
             counts.put("NONE", 0);
             // Python benchmark/server: add() 返回不包含 action_counts；保持为 null 以省略序列化
             resp.setActionCounts(null);
-            resp.setRelations(null);
+            // Python parity: when graph is enabled, return relations even if empty.
+            resp.setRelations(graphResult == null ? java.util.Collections.emptyMap() : graphResult);
             return resp;
         }
-        return intelligentAdd(request, normalized);
+        com.oceanbase.powermem.sdk.model.AddMemoryResponse resp = intelligentAdd(request, normalized);
+        if (resp != null) {
+            resp.setRelations(graphResult == null ? java.util.Collections.emptyMap() : graphResult);
+        }
+        return resp;
     }
 
     private com.oceanbase.powermem.sdk.model.AddMemoryResponse intelligentAdd(com.oceanbase.powermem.sdk.model.AddMemoryRequest request, String normalized) {
@@ -325,7 +336,14 @@ public class Memory implements MemoryBase {
             results = filtered;
         }
         com.oceanbase.powermem.sdk.model.SearchMemoriesResponse resp = new com.oceanbase.powermem.sdk.model.SearchMemoriesResponse(results);
-        resp.setRelations(null);
+        if (graphStore != null && config != null && config.getGraphStore() != null && config.getGraphStore().isEnabled()) {
+            java.util.Map<String, Object> gf = buildGraphFilters(request.getUserId(), request.getAgentId(), request.getRunId(), request.getFilters());
+            java.util.List<java.util.Map<String, Object>> gr = graphStore.search(request.getQuery(), gf, limit);
+            // Python parity: when graph enabled, relations should always be present (empty list allowed).
+            resp.setRelations(gr == null ? java.util.Collections.emptyList() : gr);
+        } else {
+            resp.setRelations(null);
+        }
         return resp;
     }
 
@@ -473,7 +491,14 @@ public class Memory implements MemoryBase {
             results.add(m);
         }
         resp.setResults(results);
-        resp.setRelations(null);
+        if (graphStore != null && config != null && config.getGraphStore() != null && config.getGraphStore().isEnabled()) {
+            java.util.Map<String, Object> gf = buildGraphFilters(request.getUserId(), request.getAgentId(), request.getRunId(), null);
+            int lim = request.getLimit() > 0 ? request.getLimit() : 100;
+            java.util.List<java.util.Map<String, Object>> gr = graphStore.getAll(gf, lim + Math.max(0, request.getOffset()));
+            resp.setRelations(gr == null ? java.util.Collections.emptyList() : gr);
+        } else {
+            resp.setRelations(null);
+        }
         return resp;
     }
 
@@ -482,7 +507,55 @@ public class Memory implements MemoryBase {
             com.oceanbase.powermem.sdk.model.DeleteAllMemoriesRequest request) {
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonNull(request, "DeleteAllMemoriesRequest is required");
         int deleted = storage.clearMemories(request.getUserId(), request.getAgentId(), request.getRunId());
+        if (graphStore != null && config != null && config.getGraphStore() != null && config.getGraphStore().isEnabled()) {
+            java.util.Map<String, Object> gf = buildGraphFilters(request.getUserId(), request.getAgentId(), request.getRunId(), null);
+            try {
+                graphStore.deleteAll(gf);
+            } catch (Exception ignored) {
+                // best-effort, graph should not break deleteAll
+            }
+        }
         return new com.oceanbase.powermem.sdk.model.DeleteAllMemoriesResponse(deleted);
+    }
+
+    private java.util.Map<String, Object> maybeAddToGraph(com.oceanbase.powermem.sdk.model.AddMemoryRequest request) {
+        if (graphStore == null || config == null || config.getGraphStore() == null || !config.getGraphStore().isEnabled()) {
+            return null;
+        }
+        String data;
+        if (request.getMessages() != null && !request.getMessages().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            for (com.oceanbase.powermem.sdk.model.Message m : request.getMessages()) {
+                if (m == null) continue;
+                if ("system".equalsIgnoreCase(m.getRole())) continue;
+                if (m.getContent() == null || m.getContent().isBlank()) continue;
+                if (sb.length() > 0) sb.append("\n");
+                sb.append(m.getContent());
+            }
+            data = sb.toString();
+        } else {
+            data = request.getText();
+        }
+        if (data == null || data.isBlank()) {
+            return null;
+        }
+        java.util.Map<String, Object> gf = buildGraphFilters(request.getUserId(), request.getAgentId(), request.getRunId(), request.getFilters());
+        return graphStore.add(data, gf);
+    }
+
+    private static java.util.Map<String, Object> buildGraphFilters(
+            String userId,
+            String agentId,
+            String runId,
+            java.util.Map<String, Object> extraFilters) {
+        java.util.Map<String, Object> gf = extraFilters == null ? new java.util.HashMap<>() : new java.util.HashMap<>(extraFilters);
+        gf.put("user_id", userId == null ? "user" : userId);
+        gf.put("agent_id", agentId);
+        gf.put("run_id", runId);
+        if (gf.get("user_id") == null) {
+            gf.put("user_id", "user");
+        }
+        return gf;
     }
 }
 

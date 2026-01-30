@@ -45,6 +45,32 @@ public class MemoryE2eTest {
         return new Memory(cfg);
     }
 
+    private static Memory newMemoryWithTempSqliteAndInMemoryGraph(Path dbPath) {
+        MemoryConfig cfg = new MemoryConfig();
+        VectorStoreConfig vs = VectorStoreConfig.sqlite(dbPath.toString());
+        vs.setCollectionName("memories");
+        cfg.setVectorStore(vs);
+
+        // offline deterministic
+        EmbedderConfig emb = new EmbedderConfig();
+        emb.setProvider("mock");
+        cfg.setEmbedder(emb);
+
+        LlmConfig llm = new LlmConfig();
+        llm.setProvider("mock");
+        cfg.setLlm(llm);
+
+        // enable intelligent memory plugin (ebbinghaus lifecycle hooks)
+        cfg.getIntelligentMemory().setEnabled(true);
+        cfg.getIntelligentMemory().setDecayEnabled(true);
+
+        // enable graph store (in-memory)
+        cfg.getGraphStore().setEnabled(true);
+        cfg.getGraphStore().setProvider("memory");
+
+        return new Memory(cfg);
+    }
+
     @Test
     void testCrudAndSearch_withMetadataAndFilters(@TempDir Path tmp) {
         Memory mem = newMemoryWithTempSqlite(tmp.resolve("powermem_test.db"));
@@ -246,6 +272,51 @@ public class MemoryE2eTest {
         var delResp = mem.delete(id, null, agentId);
         assertNotNull(delResp);
         assertTrue(delResp.isDeleted());
+    }
+
+    @Test
+    void testGraphStoreRelations_areReturnedWhenEnabled(@TempDir Path tmp) {
+        Memory mem = newMemoryWithTempSqliteAndInMemoryGraph(tmp.resolve("powermem_graph.db"));
+
+        String userId = null; // Python parity: user_id optional; graph uses default "user"
+        String agentId = "a_graph";
+        String runId = "r_graph";
+
+        DeleteAllMemoriesRequest delAll = new DeleteAllMemoriesRequest();
+        delAll.setUserId(userId);
+        delAll.setAgentId(agentId);
+        delAll.setRunId(runId);
+        mem.deleteAll(delAll);
+
+        AddMemoryRequest add = new AddMemoryRequest();
+        add.setUserId(userId);
+        add.setAgentId(agentId);
+        add.setRunId(runId);
+        add.setInfer(false);
+        add.setText("用户喜欢简洁的中文回答");
+        var addResp = mem.add(add);
+        assertNotNull(addResp);
+        assertNotNull(addResp.getResults());
+        assertEquals(1, addResp.getResults().size());
+        assertNotNull(addResp.getRelations(), "relations should be present when graph store is enabled");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> rel = (Map<String, Object>) addResp.getRelations();
+        assertTrue(rel.containsKey("added_entities"));
+
+        // Search should return relations list (source/relationship/destination)
+        SearchMemoriesRequest search = SearchMemoriesRequest.ofQuery("喜欢 简洁");
+        search.setUserId(userId);
+        search.setAgentId(agentId);
+        search.setRunId(runId);
+        var searchResp = mem.search(search);
+        assertNotNull(searchResp);
+        assertNotNull(searchResp.getRelations(), "search.relations should be present when graph store is enabled");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> graphHits = (List<Map<String, Object>>) searchResp.getRelations();
+        assertFalse(graphHits.isEmpty());
+        assertEquals("用户", String.valueOf(graphHits.get(0).get("source")));
     }
 }
 

@@ -136,6 +136,50 @@ public final class ConfigLoader {
         setIfPresent(values, v -> vector.setPoolSize(parseInt(v)), "DATABASE_POOL_SIZE");
         setIfPresent(values, v -> vector.setMaxOverflow(parseInt(v)), "DATABASE_MAX_OVERFLOW");
 
+        // Graph store (optional). Mirrors Python graph_store.enable/provider and uses OceanBase by default.
+        GraphStoreConfig graph = config.getGraphStore();
+        setIfPresent(values, v -> graph.setEnabled(parseBoolean(v)), "GRAPH_STORE_ENABLED", "graph_store.enabled");
+        setIfPresent(values, graph::setProvider, "GRAPH_STORE_PROVIDER", "graph_store.provider");
+        // default to OceanBase connection if graph-specific env isn't set
+        setIfPresent(values, graph::setHost, "GRAPH_STORE_HOST", "OCEANBASE_HOST");
+        setIfPresent(values, v -> graph.setPort(parseInt(v)), "GRAPH_STORE_PORT", "OCEANBASE_PORT");
+        setIfPresent(values, graph::setUser, "GRAPH_STORE_USER", "OCEANBASE_USER");
+        setIfPresent(values, graph::setPassword, "GRAPH_STORE_PASSWORD", "OCEANBASE_PASSWORD");
+        setIfPresent(values, graph::setDatabase, "GRAPH_STORE_DATABASE", "OCEANBASE_DATABASE");
+        setIfPresent(values, v -> graph.setTimeoutSeconds(parseInt(v)), "GRAPH_STORE_TIMEOUT");
+        // Python parity options
+        setIfPresent(values, graph::setEntitiesTable, "GRAPH_STORE_ENTITIES_TABLE", "GRAPH_STORE_TABLE_ENTITIES");
+        setIfPresent(values, graph::setRelationshipsTable, "GRAPH_STORE_RELATIONSHIPS_TABLE", "GRAPH_STORE_TABLE_RELATIONSHIPS");
+        setIfPresent(values, v -> graph.setEmbeddingModelDims(parseInt(v)), "GRAPH_STORE_EMBEDDING_MODEL_DIMS", "OCEANBASE_EMBEDDING_MODEL_DIMS");
+        setIfPresent(values, graph::setIndexType, "GRAPH_STORE_INDEX_TYPE", "OCEANBASE_INDEX_TYPE");
+        setIfPresent(values, graph::setMetricType, "GRAPH_STORE_VECTOR_METRIC_TYPE", "GRAPH_STORE_METRIC_TYPE", "OCEANBASE_VECTOR_METRIC_TYPE", "OCEANBASE_METRIC_TYPE");
+        setIfPresent(values, graph::setVectorIndexName, "GRAPH_STORE_VIDX_NAME", "OCEANBASE_VIDX_NAME");
+        setIfPresent(values, v -> graph.setSimilarityThreshold(parseDouble(v)), "GRAPH_STORE_SIMILARITY_THRESHOLD");
+        setIfPresent(values, v -> graph.setMaxHops(parseInt(v)), "GRAPH_STORE_MAX_HOPS");
+        setIfPresent(values, v -> graph.setSearchLimit(parseInt(v)), "GRAPH_STORE_SEARCH_LIMIT");
+        setIfPresent(values, v -> graph.setBm25TopN(parseInt(v)), "GRAPH_STORE_BM25_TOP_N");
+        setIfPresent(values, graph::setCustomPrompt, "GRAPH_STORE_CUSTOM_PROMPT", "graph_store.custom_prompt");
+        setIfPresent(values, graph::setCustomExtractRelationsPrompt, "GRAPH_STORE_CUSTOM_EXTRACT_RELATIONS_PROMPT");
+        setIfPresent(values, graph::setCustomDeleteRelationsPrompt, "GRAPH_STORE_CUSTOM_DELETE_RELATIONS_PROMPT");
+
+        // graph_store.llm.* overrides (if set, GraphStoreFactory will create a dedicated LLM instance)
+        LlmConfig graphLlm = graph.getLlm();
+        setIfPresent(values, graphLlm::setProvider, "GRAPH_STORE_LLM_PROVIDER");
+        setIfPresent(values, graphLlm::setApiKey, "GRAPH_STORE_LLM_API_KEY");
+        setIfPresent(values, graphLlm::setModel, "GRAPH_STORE_LLM_MODEL");
+        setIfPresent(values, graphLlm::setBaseUrl, "GRAPH_STORE_LLM_BASE_URL");
+        setIfPresent(values, v -> graphLlm.setTemperature(parseDouble(v)), "GRAPH_STORE_LLM_TEMPERATURE");
+        setIfPresent(values, v -> graphLlm.setMaxTokens(parseInt(v)), "GRAPH_STORE_LLM_MAX_TOKENS");
+        setIfPresent(values, v -> graphLlm.setTopP(parseDouble(v)), "GRAPH_STORE_LLM_TOP_P");
+
+        // graph_store.embedder.* overrides (if set, GraphStoreFactory will create a dedicated Embedder instance)
+        EmbedderConfig graphEmb = graph.getEmbedder();
+        setIfPresent(values, graphEmb::setProvider, "GRAPH_STORE_EMBEDDING_PROVIDER", "GRAPH_STORE_EMBEDDER_PROVIDER");
+        setIfPresent(values, graphEmb::setApiKey, "GRAPH_STORE_EMBEDDING_API_KEY", "GRAPH_STORE_EMBEDDER_API_KEY");
+        setIfPresent(values, graphEmb::setModel, "GRAPH_STORE_EMBEDDING_MODEL", "GRAPH_STORE_EMBEDDER_MODEL");
+        setIfPresent(values, v -> graphEmb.setEmbeddingDims(parseInt(v)), "GRAPH_STORE_EMBEDDING_DIMS", "GRAPH_STORE_EMBEDDER_DIMS");
+        setIfPresent(values, graphEmb::setBaseUrl, "GRAPH_STORE_EMBEDDING_BASE_URL", "GRAPH_STORE_EMBEDDER_BASE_URL");
+
         LlmConfig llm = config.getLlm();
         setIfPresent(values, llm::setProvider, "LLM_PROVIDER", "llm.provider");
         setIfPresent(values, llm::setApiKey, "LLM_API_KEY");
