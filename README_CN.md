@@ -2,9 +2,46 @@
 
 PowerMem 的 Java SDK（JDK 11 / Maven）。
 
-> 本仓库提供 `README_CN.md` / `README_EN.md` 两份文档，请保持同步更新。
+> 本仓库提供 `README_CN.md`（中文）与 `README.md`（English）两份文档，请保持同步更新。
 
-[README](README.md) | [English](README_EN.md) | [PowerMem 主仓库](https://github.com/oceanbase/powermem)
+[English](README.md) | [PowerMem 主仓库](https://github.com/oceanbase/powermem)
+
+## 项目简介
+
+PowerMem 是一套面向 AI 应用的智能记忆系统，解决“长期记忆、检索与更新”的工程化落地问题。本目录提供其 **Java SDK**，方便在 Java 应用中直接集成记忆能力，并对接不同存储与模型服务（如 SQLite、OceanBase、Qwen 等）。
+
+## 核心特点
+
+- **开发者友好**：JDK 11 + Maven；配置自动从 `.env` 加载（环境变量优先）。
+- **存储后端可插拔**：支持 **SQLite**（本地开发）与 **OceanBase（MySQL mode）**。
+- **混合检索（Hybrid Search）**：OceanBase 支持 **FULLTEXT + Vector** 并提供融合策略（RRF / Weighted Fusion）。
+- **可选 Reranker**：支持在 hybrid/search 候选集上二次精排，并把 `_fusion_score` / `_rerank_score` 写入返回 `metadata` 便于观测。
+- **Graph Store（对齐 Python）**：支持 `graph_store`（实体/关系抽取、图存储、多跳检索、BM25 重排），并在 `add/search/get_all` 返回 `relations`。
+- **兼容与演进**：OceanBase 表存在时 best-effort 执行 `ALTER TABLE` 补齐必要列，减少升级成本。
+- **可测试**：离线单测默认可跑；OceanBase 集成测试通过环境变量开关避免误连线上库。
+
+## 最小示例（Java）
+
+```java
+import com.oceanbase.powermem.sdk.config.ConfigLoader;
+import com.oceanbase.powermem.sdk.core.Memory;
+import com.oceanbase.powermem.sdk.model.AddMemoryRequest;
+import com.oceanbase.powermem.sdk.model.SearchMemoriesRequest;
+
+var cfg = ConfigLoader.fromEnvAndDotEnv();
+var mem = new Memory(cfg);
+
+mem.add(AddMemoryRequest.ofText("用户喜欢简洁的中文回答", "user123"));
+
+var resp = mem.search(SearchMemoriesRequest.ofQuery("用户偏好是什么？", "user123"));
+System.out.println(resp.getResults());
+```
+
+## 快速入口
+
+- **主仓库**：[PowerMem](https://github.com/oceanbase/powermem)
+- **配置示例**：`.env.example`
+- **测试报告**：`target/surefire-reports/`
 
 ## 快速开始
 
@@ -161,6 +198,46 @@ RERANKER_BASE_URL=https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rer
 集成测试默认不会跑（避免误连线上库），只有在设置了环境变量时才会启用：
 - `OceanBaseVectorStoreIT`
 - `OceanBaseMemoryE2eIT`
+- `OceanBaseGraphStoreIT`
+
+## Graph Store（关系抽取 / 图检索）
+
+Python 版本支持 `graph_store`，并在 `add/search/get_all` 返回 `relations`。
+
+Java 版本提供了 **GraphStore 接口与返回结构对齐**，并内置一个 **`memory`（InMemoryGraphStore）** 实现用于离线测试：
+- 开启方式（代码配置）：`cfg.getGraphStore().setEnabled(true); cfg.getGraphStore().setProvider("memory");`
+- 返回结构：
+  - `add`：`relations={"deleted_entities":[...], "added_entities":[{"source","relationship","target"}, ...]}`
+  - `search/get_all`：`relations=[{"source","relationship","destination"}, ...]`
+
+同时，Java 版本已提供 **`OceanBaseGraphStore`（对齐 Python 的 schema/流程）**：
+- **Schema**：`graph_entities` + `graph_relationships` 两表（可通过 `GRAPH_STORE_ENTITIES_TABLE` / `GRAPH_STORE_RELATIONSHIPS_TABLE` 修改表名）
+- **抽取**：支持 LLM tools（`extract_entities` / `establish_relationships` / `delete_graph_memory`），并有解析兜底
+- **ANN**：best-effort `VECTOR(dims)` + `CREATE VECTOR INDEX`，失败则回退到 `embedding_json` brute-force
+- **检索**：多跳扩展 + BM25 重排（tokenizer 为轻量实现，便于离线运行）
+
+### GraphStore 独立 LLM/Embedding 配置（对齐 Python：`graph_store.llm.*`）
+
+你可以为 GraphStore 单独配置 LLM/Embedder（优先级高于全局 `LLM_*` / `EMBEDDING_*`）：
+
+```dotenv
+# 开启 graph store
+GRAPH_STORE_ENABLED=true
+GRAPH_STORE_PROVIDER=oceanbase
+
+# graph_store.llm.*
+GRAPH_STORE_LLM_PROVIDER=qwen
+GRAPH_STORE_LLM_API_KEY=sk-xxx
+GRAPH_STORE_LLM_MODEL=qwen-plus
+GRAPH_STORE_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+
+# graph_store.embedder.*
+GRAPH_STORE_EMBEDDING_PROVIDER=qwen
+GRAPH_STORE_EMBEDDING_API_KEY=sk-xxx
+GRAPH_STORE_EMBEDDING_MODEL=text-embedding-v4
+GRAPH_STORE_EMBEDDING_DIMS=1536
+GRAPH_STORE_EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+```
 
 ## 测试
 
@@ -181,6 +258,7 @@ export OCEANBASE_PORT=2881
 
 mvn -Dtest=OceanBaseVectorStoreIT test
 mvn -Dtest=OceanBaseMemoryE2eIT test
+mvn -Dtest=OceanBaseGraphStoreIT test
 ```
 
 ## 作为正式 Java SDK 打包与使用
