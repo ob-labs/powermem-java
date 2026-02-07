@@ -45,6 +45,42 @@ public class VectorStoreConfig {
 
     public VectorStoreConfig() {}
 
+    public VectorStoreConfig copy() {
+        VectorStoreConfig c = new VectorStoreConfig();
+        c.setProvider(this.provider);
+
+        c.setDatabasePath(this.databasePath);
+        c.setEnableWal(this.enableWal);
+        c.setTimeoutSeconds(this.timeoutSeconds);
+
+        c.setHost(this.host);
+        c.setPort(this.port);
+        c.setUser(this.user);
+        c.setPassword(this.password);
+        c.setDatabase(this.database);
+        c.setCollectionName(this.collectionName);
+        c.setEmbeddingModelDims(this.embeddingModelDims);
+
+        c.setIndexType(this.indexType);
+        c.setMetricType(this.metricType);
+        c.setHybridSearch(this.hybridSearch);
+        c.setFulltextParser(this.fulltextParser);
+        c.setVectorWeight(this.vectorWeight);
+        c.setFtsWeight(this.ftsWeight);
+        c.setFusionMethod(this.fusionMethod);
+        c.setRrfK(this.rrfK);
+        c.setTextField(this.textField);
+        c.setVectorField(this.vectorField);
+        c.setMetadataField(this.metadataField);
+        c.setPrimaryField(this.primaryField);
+        c.setVectorIndexName(this.vectorIndexName);
+
+        c.setSslmode(this.sslmode);
+        c.setPoolSize(this.poolSize);
+        c.setMaxOverflow(this.maxOverflow);
+        return c;
+    }
+
     public static VectorStoreConfig sqlite(String databasePath) {
         VectorStoreConfig config = new VectorStoreConfig();
         config.setProvider("sqlite");

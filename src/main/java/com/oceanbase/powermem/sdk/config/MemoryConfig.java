@@ -23,6 +23,7 @@ public class MemoryConfig {
     private String customFactExtractionPrompt;
     private String customUpdateMemoryPrompt;
     private String customImportanceEvaluationPrompt;
+    private java.util.List<SubStoreConfig> subStores = new java.util.ArrayList<>();
 
     public MemoryConfig() {}
 
@@ -136,6 +137,14 @@ public class MemoryConfig {
 
     public void setCustomImportanceEvaluationPrompt(String customImportanceEvaluationPrompt) {
         this.customImportanceEvaluationPrompt = customImportanceEvaluationPrompt;
+    }
+
+    public java.util.List<SubStoreConfig> getSubStores() {
+        return subStores;
+    }
+
+    public void setSubStores(java.util.List<SubStoreConfig> subStores) {
+        this.subStores = subStores == null ? new java.util.ArrayList<>() : subStores;
     }
 
     public static Builder builder() {

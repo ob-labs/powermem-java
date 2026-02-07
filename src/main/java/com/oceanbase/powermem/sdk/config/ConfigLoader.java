@@ -14,8 +14,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 public final class ConfigLoader {
     private ConfigLoader() {}
@@ -198,6 +201,10 @@ public final class ConfigLoader {
         setIfPresent(values, v -> embedder.setEmbeddingDims(parseInt(v)), "EMBEDDING_DIMS");
         setIfPresent(values, embedder::setBaseUrl, "QWEN_EMBEDDING_BASE_URL", "OPEN_EMBEDDING_BASE_URL");
 
+        // Sub stores (optional): route by metadata/filters to different store/embedder.
+        // Python reference: Memory._init_sub_stores + SubStorageAdapter routing.
+        loadSubStores(values, config);
+
         // Reranker (optional)
         RerankConfig rerank = config.getReranker();
         // Create on-demand if any rerank key is present
@@ -271,6 +278,234 @@ public final class ConfigLoader {
         setIfPresent(values, config::setCustomUpdateMemoryPrompt, "CUSTOM_UPDATE_MEMORY_PROMPT", "custom_update_memory_prompt");
         setIfPresent(values, config::setCustomImportanceEvaluationPrompt, "CUSTOM_IMPORTANCE_EVALUATION_PROMPT", "custom_importance_evaluation_prompt");
         return config;
+    }
+
+    /**
+     * Load sub-store configs from environment-like map.
+     *
+     * <p>Supported formats:</p>
+     * - {@code SUB_STORES_JSON}: JSON array of objects
+     * - Indexed keys (autodetect indices from keys or specify {@code SUB_STORES_COUNT}):
+     *   - {@code SUB_STORE_0_COLLECTION} or {@code SUB_STORE_0_NAME}
+     *   - routing filter via:
+     *     - {@code SUB_STORE_0_ROUTING_FILTER_JSON} (JSON map)
+     *     - {@code SUB_STORE_0_ROUTE_<KEY>=<VALUE>} (e.g. {@code SUB_STORE_0_ROUTE_CATEGORY=pref})
+     *   - optional overrides (prefixed with {@code SUB_STORE_0_}):
+     *     - Vector store: {@code DATABASE_PROVIDER}, {@code SQLITE_PATH}, {@code OCEANBASE_HOST}, ...
+     *     - Embedder: {@code EMBEDDING_PROVIDER}, {@code EMBEDDING_API_KEY}, {@code EMBEDDING_MODEL}, {@code EMBEDDING_DIMS}, {@code QWEN_EMBEDDING_BASE_URL}, ...
+     */
+    private static void loadSubStores(Map<String, ?> values, MemoryConfig config) {
+        if (values == null || config == null) {
+            return;
+        }
+
+        Object json = values.get("SUB_STORES_JSON");
+        if (json != null && !json.toString().isBlank()) {
+            List<com.oceanbase.powermem.sdk.config.SubStoreConfig> parsed = parseSubStoresJson(json.toString(), config);
+            if (parsed != null && !parsed.isEmpty()) {
+                config.setSubStores(parsed);
+                return;
+            }
+        }
+
+        Set<Integer> indices = collectSubStoreIndices(values);
+        Object cnt = values.get("SUB_STORES_COUNT");
+        if (cnt != null) {
+            int c = parseInt(cnt.toString());
+            for (int i = 0; i < c; i++) {
+                indices.add(i);
+            }
+        }
+        if (indices.isEmpty()) {
+            return;
+        }
+
+        java.util.List<com.oceanbase.powermem.sdk.config.SubStoreConfig> out = new java.util.ArrayList<>();
+        for (int idx : indices) {
+            String p = "SUB_STORE_" + idx + "_";
+            Object enabled = values.get(p + "ENABLED");
+            if (enabled != null && !parseBoolean(enabled.toString())) {
+                continue;
+            }
+
+            Object readyRaw = values.get(p + "READY");
+            Boolean ready = null;
+            if (readyRaw != null) {
+                ready = parseBoolean(readyRaw.toString());
+            }
+
+            // name/collection
+            String name = str(values.get(p + "COLLECTION"));
+            if (name == null || name.isBlank()) {
+                name = str(values.get(p + "NAME"));
+            }
+
+            // routing filter
+            Map<String, Object> routing = new HashMap<>();
+            Object rfJson = values.get(p + "ROUTING_FILTER_JSON");
+            if (rfJson != null && !rfJson.toString().isBlank()) {
+                routing.putAll(parseJsonMapLoose(rfJson.toString()));
+            }
+            // SUB_STORE_{i}_ROUTE_<KEY>=<VALUE>
+            String routePrefix = p + "ROUTE_";
+            for (Map.Entry<String, ?> e : values.entrySet()) {
+                if (e == null || e.getKey() == null) continue;
+                String k = e.getKey();
+                if (!k.startsWith(routePrefix)) continue;
+                String routeKey = k.substring(routePrefix.length());
+                if (routeKey.isBlank()) continue;
+                // Normalize to lower-case for Python-like keys (env variables are usually upper-case).
+                routing.put(routeKey.toLowerCase(java.util.Locale.ROOT), e.getValue() == null ? null : e.getValue().toString());
+            }
+            if (routing.isEmpty()) {
+                continue; // routing_filter is required for a sub store
+            }
+
+            Integer dims = null;
+            Object dimsRaw = values.get(p + "EMBEDDING_MODEL_DIMS");
+            if (dimsRaw == null) dimsRaw = values.get(p + "EMBEDDING_DIMS");
+            if (dimsRaw != null) {
+                int d = parseInt(dimsRaw.toString());
+                if (d > 0) dims = d;
+            }
+
+            com.oceanbase.powermem.sdk.config.SubStoreConfig sc = new com.oceanbase.powermem.sdk.config.SubStoreConfig();
+            if (name != null && !name.isBlank()) {
+                sc.setName(name);
+            }
+            sc.setRoutingFilter(routing);
+            sc.setEmbeddingModelDims(dims);
+            sc.setReady(ready);
+
+            // Build full sub-store VectorStoreConfig and EmbedderConfig by inheriting from main, then applying overrides.
+            VectorStoreConfig subVs = (config.getVectorStore() == null) ? new VectorStoreConfig() : config.getVectorStore().copy();
+            applyVectorStoreOverridesFromEnv(values, idx, subVs);
+            EmbedderConfig subEmb = (config.getEmbedder() == null) ? new EmbedderConfig() : config.getEmbedder().copy();
+            applyEmbedderOverridesFromEnv(values, idx, subEmb);
+            if (dims != null && dims > 0) {
+                subVs.setEmbeddingModelDims(dims);
+                subEmb.setEmbeddingDims(dims);
+            }
+
+            sc.setVectorStore(subVs);
+            sc.setEmbedder(subEmb);
+            out.add(sc);
+        }
+        if (!out.isEmpty()) {
+            config.setSubStores(out);
+        }
+    }
+
+    private static Set<Integer> collectSubStoreIndices(Map<String, ?> values) {
+        Set<Integer> out = new HashSet<>();
+        if (values == null) return out;
+        for (String k : values.keySet()) {
+            if (k == null) continue;
+            if (!k.startsWith("SUB_STORE_")) continue;
+            int start = "SUB_STORE_".length();
+            int end = k.indexOf('_', start);
+            if (end <= start) continue;
+            String num = k.substring(start, end);
+            try {
+                out.add(Integer.parseInt(num));
+            } catch (Exception ignored) {
+                // skip
+            }
+        }
+        return out;
+    }
+
+    private static void applyVectorStoreOverridesFromEnv(Map<String, ?> values, int idx, VectorStoreConfig vs) {
+        if (values == null || vs == null) return;
+        String p = "SUB_STORE_" + idx + "_";
+        setIfPresent(values, vs::setProvider, p + "DATABASE_PROVIDER");
+        setIfPresent(values, vs::setDatabasePath, p + "SQLITE_PATH");
+        setIfPresent(values, v -> vs.setEnableWal(parseBoolean(v)), p + "SQLITE_ENABLE_WAL");
+        setIfPresent(values, v -> vs.setTimeoutSeconds(parseInt(v)), p + "SQLITE_TIMEOUT", p + "OCEANBASE_TIMEOUT_SECONDS");
+
+        setIfPresent(values, vs::setHost, p + "OCEANBASE_HOST", p + "POSTGRES_HOST");
+        setIfPresent(values, v -> vs.setPort(parseInt(v)), p + "OCEANBASE_PORT", p + "POSTGRES_PORT");
+        setIfPresent(values, vs::setUser, p + "OCEANBASE_USER", p + "POSTGRES_USER");
+        setIfPresent(values, vs::setPassword, p + "OCEANBASE_PASSWORD", p + "POSTGRES_PASSWORD");
+        setIfPresent(values, vs::setDatabase, p + "OCEANBASE_DATABASE", p + "POSTGRES_DATABASE");
+        setIfPresent(values, vs::setCollectionName, p + "OCEANBASE_COLLECTION", p + "POSTGRES_COLLECTION", p + "COLLECTION", p + "NAME");
+
+        setIfPresent(values, v -> vs.setEmbeddingModelDims(parseInt(v)), p + "OCEANBASE_EMBEDDING_MODEL_DIMS", p + "EMBEDDING_DIMS", p + "EMBEDDING_MODEL_DIMS");
+        setIfPresent(values, vs::setIndexType, p + "OCEANBASE_INDEX_TYPE");
+        setIfPresent(values, vs::setMetricType, p + "OCEANBASE_VECTOR_METRIC_TYPE", p + "OCEANBASE_METRIC_TYPE");
+        setIfPresent(values, vs::setVectorIndexName, p + "OCEANBASE_VIDX_NAME");
+        setIfPresent(values, v -> vs.setHybridSearch(parseBoolean(v)), p + "OCEANBASE_HYBRID_SEARCH");
+        setIfPresent(values, vs::setFulltextParser, p + "OCEANBASE_FULLTEXT_PARSER");
+        setIfPresent(values, v -> vs.setVectorWeight(parseDouble(v)), p + "OCEANBASE_VECTOR_WEIGHT");
+        setIfPresent(values, v -> vs.setFtsWeight(parseDouble(v)), p + "OCEANBASE_FTS_WEIGHT");
+        setIfPresent(values, vs::setFusionMethod, p + "OCEANBASE_FUSION_METHOD");
+        setIfPresent(values, v -> vs.setRrfK(parseInt(v)), p + "OCEANBASE_RRF_K");
+    }
+
+    private static void applyEmbedderOverridesFromEnv(Map<String, ?> values, int idx, EmbedderConfig emb) {
+        if (values == null || emb == null) return;
+        String p = "SUB_STORE_" + idx + "_";
+        setIfPresent(values, emb::setProvider, p + "EMBEDDING_PROVIDER");
+        setIfPresent(values, emb::setApiKey, p + "EMBEDDING_API_KEY");
+        setIfPresent(values, emb::setModel, p + "EMBEDDING_MODEL");
+        setIfPresent(values, v -> emb.setEmbeddingDims(parseInt(v)), p + "EMBEDDING_DIMS");
+        // allow either generic or provider-specific base url keys
+        setIfPresent(values, emb::setBaseUrl, p + "EMBEDDING_BASE_URL", p + "QWEN_EMBEDDING_BASE_URL", p + "OPEN_EMBEDDING_BASE_URL");
+    }
+
+    private static List<com.oceanbase.powermem.sdk.config.SubStoreConfig> parseSubStoresJson(String json, MemoryConfig base) {
+        if (json == null || json.isBlank()) {
+            return java.util.Collections.emptyList();
+        }
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            List<Map<String, Object>> arr = mapper.readValue(
+                    json,
+                    new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+            if (arr == null || arr.isEmpty()) {
+                return java.util.Collections.emptyList();
+            }
+            java.util.List<com.oceanbase.powermem.sdk.config.SubStoreConfig> out = new java.util.ArrayList<>();
+            for (Map<String, Object> m : arr) {
+                if (m == null) continue;
+                com.oceanbase.powermem.sdk.config.SubStoreConfig sc = new com.oceanbase.powermem.sdk.config.SubStoreConfig();
+                Object n = m.get("name");
+                if (n == null) n = m.get("collection_name");
+                if (n == null) n = m.get("collectionName");
+                if (n != null && !n.toString().isBlank()) sc.setName(n.toString());
+                Object rf = m.get("routing_filter");
+                if (rf instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> mm = (Map<String, Object>) rf;
+                    sc.setRoutingFilter(mm);
+                }
+                Object d = m.get("embedding_model_dims");
+                if (d == null) d = m.get("embedding_dims");
+                if (d != null) {
+                    int dims = parseInt(String.valueOf(d));
+                    if (dims > 0) sc.setEmbeddingModelDims(dims);
+                }
+                // inherit configs as-is (buildStorageAdapter will do the right thing)
+                sc.setVectorStore(base == null || base.getVectorStore() == null ? null : base.getVectorStore().copy());
+                sc.setEmbedder(base == null || base.getEmbedder() == null ? null : base.getEmbedder().copy());
+                out.add(sc);
+            }
+            return out;
+        } catch (Exception ignored) {
+            return java.util.Collections.emptyList();
+        }
+    }
+
+    private static Map<String, Object> parseJsonMapLoose(String json) {
+        try {
+            return new com.oceanbase.powermem.sdk.json.JacksonJsonCodec().fromJsonToMap(json);
+        } catch (Exception ignored) {
+            return new HashMap<>();
+        }
+    }
+
+    private static String str(Object o) {
+        return o == null ? null : o.toString();
     }
 
     private static void setIfPresent(Map<String, ?> values, java.util.function.Consumer<String> setter, String... keys) {

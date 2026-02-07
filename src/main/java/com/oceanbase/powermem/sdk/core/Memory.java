@@ -29,12 +29,123 @@ public class Memory implements MemoryBase {
         this.vectorStore = com.oceanbase.powermem.sdk.storage.factory.VectorStoreFactory.fromConfig(this.config.getVectorStore());
         this.embedder = com.oceanbase.powermem.sdk.integrations.embeddings.EmbedderFactory.fromConfig(this.config.getEmbedder());
         this.llm = com.oceanbase.powermem.sdk.integrations.llm.LLMFactory.fromConfig(this.config.getLlm());
-        this.storage = new com.oceanbase.powermem.sdk.storage.adapter.StorageAdapter(this.vectorStore, this.embedder);
+        this.storage = buildStorageAdapter(this.config, this.vectorStore, this.embedder);
         this.intelligence = new com.oceanbase.powermem.sdk.intelligence.IntelligenceManager(this.config.getIntelligentMemory());
         this.plugin = new com.oceanbase.powermem.sdk.intelligence.plugin.EbbinghausIntelligencePlugin(this.config.getIntelligentMemory());
         this.reranker = com.oceanbase.powermem.sdk.integrations.rerank.RerankFactory.fromConfig(this.config.getReranker());
         this.graphStore = com.oceanbase.powermem.sdk.storage.factory.GraphStoreFactory.fromConfig(
                 this.config.getGraphStore(), this.embedder, this.llm);
+    }
+
+    private static com.oceanbase.powermem.sdk.storage.adapter.StorageAdapter buildStorageAdapter(
+            com.oceanbase.powermem.sdk.config.MemoryConfig cfg,
+            com.oceanbase.powermem.sdk.storage.base.VectorStore mainStore,
+            com.oceanbase.powermem.sdk.integrations.embeddings.Embedder mainEmbedder) {
+        java.util.List<com.oceanbase.powermem.sdk.config.SubStoreConfig> subs =
+                (cfg == null) ? null : cfg.getSubStores();
+        if (subs == null || subs.isEmpty()) {
+            return new com.oceanbase.powermem.sdk.storage.adapter.StorageAdapter(mainStore, mainEmbedder);
+        }
+
+        com.oceanbase.powermem.sdk.storage.adapter.SubStorageAdapter adapter =
+                new com.oceanbase.powermem.sdk.storage.adapter.SubStorageAdapter(mainStore, mainEmbedder);
+
+        com.oceanbase.powermem.sdk.config.VectorStoreConfig mainVsCfg = cfg.getVectorStore();
+        com.oceanbase.powermem.sdk.config.EmbedderConfig mainEmbCfg = cfg.getEmbedder();
+        String mainCollection = mainVsCfg == null ? "memories" : mainVsCfg.getCollectionName();
+        int mainDims = mainVsCfg == null ? 0 : mainVsCfg.getEmbeddingModelDims();
+
+        int idx = 0;
+        for (com.oceanbase.powermem.sdk.config.SubStoreConfig sc : subs) {
+            if (sc == null) {
+                idx++;
+                continue;
+            }
+            java.util.Map<String, Object> rf = sc.getRoutingFilter();
+            if (rf == null || rf.isEmpty()) {
+                idx++;
+                continue;
+            }
+            String storeName = sc.getName();
+            if (storeName == null || storeName.isBlank()) {
+                storeName = mainCollection + "_sub_" + idx;
+            }
+
+            // Vector store config: start from main, apply sub overrides, then enforce name/dims.
+            com.oceanbase.powermem.sdk.config.VectorStoreConfig vcfg =
+                    mainVsCfg == null ? new com.oceanbase.powermem.sdk.config.VectorStoreConfig() : mainVsCfg.copy();
+            com.oceanbase.powermem.sdk.config.VectorStoreConfig ov = sc.getVectorStore();
+            if (ov != null) {
+                applyVectorOverrides(vcfg, ov);
+            }
+            vcfg.setCollectionName(storeName);
+            Integer dims = sc.getEmbeddingModelDims();
+            if (dims != null && dims > 0) {
+                vcfg.setEmbeddingModelDims(dims);
+            } else if (vcfg.getEmbeddingModelDims() <= 0 && mainDims > 0) {
+                vcfg.setEmbeddingModelDims(mainDims);
+            }
+
+            com.oceanbase.powermem.sdk.storage.base.VectorStore subStore =
+                    com.oceanbase.powermem.sdk.storage.factory.VectorStoreFactory.fromConfig(vcfg);
+
+            // Embedder config: start from main, apply overrides (inherit apiKey/baseUrl when missing), enforce dims when set.
+            com.oceanbase.powermem.sdk.config.EmbedderConfig ecfg =
+                    mainEmbCfg == null ? new com.oceanbase.powermem.sdk.config.EmbedderConfig() : mainEmbCfg.copy();
+            com.oceanbase.powermem.sdk.config.EmbedderConfig eov = sc.getEmbedder();
+            if (eov != null) {
+                if (eov.getProvider() != null && !eov.getProvider().isBlank()) {
+                    ecfg.setProvider(eov.getProvider());
+                }
+                if (eov.getApiKey() != null && !eov.getApiKey().isBlank()) {
+                    ecfg.setApiKey(eov.getApiKey());
+                }
+                if (eov.getModel() != null && !eov.getModel().isBlank()) {
+                    ecfg.setModel(eov.getModel());
+                }
+                if (eov.getBaseUrl() != null && !eov.getBaseUrl().isBlank()) {
+                    ecfg.setBaseUrl(eov.getBaseUrl());
+                }
+                if (eov.getEmbeddingDims() > 0) {
+                    ecfg.setEmbeddingDims(eov.getEmbeddingDims());
+                }
+            }
+            if (dims != null && dims > 0) {
+                ecfg.setEmbeddingDims(dims);
+            }
+            com.oceanbase.powermem.sdk.integrations.embeddings.Embedder subEmbedder =
+                    com.oceanbase.powermem.sdk.integrations.embeddings.EmbedderFactory.fromConfig(ecfg);
+
+            adapter.registerSubStore(storeName, rf, subStore, subEmbedder);
+            if (sc.getReady() != null) {
+                adapter.setSubStoreReady(storeName, sc.getReady());
+            }
+            idx++;
+        }
+        return adapter;
+    }
+
+    private static void applyVectorOverrides(com.oceanbase.powermem.sdk.config.VectorStoreConfig base,
+                                            com.oceanbase.powermem.sdk.config.VectorStoreConfig ov) {
+        if (base == null || ov == null) return;
+        if (ov.getProvider() != null && !ov.getProvider().isBlank()) base.setProvider(ov.getProvider());
+        if (ov.getDatabasePath() != null && !ov.getDatabasePath().isBlank()) base.setDatabasePath(ov.getDatabasePath());
+        if (ov.getHost() != null && !ov.getHost().isBlank()) base.setHost(ov.getHost());
+        if (ov.getPort() > 0) base.setPort(ov.getPort());
+        if (ov.getUser() != null && !ov.getUser().isBlank()) base.setUser(ov.getUser());
+        if (ov.getPassword() != null) base.setPassword(ov.getPassword());
+        if (ov.getDatabase() != null && !ov.getDatabase().isBlank()) base.setDatabase(ov.getDatabase());
+        if (ov.getCollectionName() != null && !ov.getCollectionName().isBlank()) base.setCollectionName(ov.getCollectionName());
+        if (ov.getEmbeddingModelDims() > 0) base.setEmbeddingModelDims(ov.getEmbeddingModelDims());
+        if (ov.getIndexType() != null && !ov.getIndexType().isBlank()) base.setIndexType(ov.getIndexType());
+        if (ov.getMetricType() != null && !ov.getMetricType().isBlank()) base.setMetricType(ov.getMetricType());
+        if (ov.getVectorIndexName() != null && !ov.getVectorIndexName().isBlank()) base.setVectorIndexName(ov.getVectorIndexName());
+        // Hybrid/FTS fields: keep best-effort (only override when non-blank/non-zero)
+        if (ov.getFulltextParser() != null && !ov.getFulltextParser().isBlank()) base.setFulltextParser(ov.getFulltextParser());
+        if (ov.getVectorWeight() > 0) base.setVectorWeight(ov.getVectorWeight());
+        if (ov.getFtsWeight() > 0) base.setFtsWeight(ov.getFtsWeight());
+        if (ov.getFusionMethod() != null && !ov.getFusionMethod().isBlank()) base.setFusionMethod(ov.getFusionMethod());
+        if (ov.getRrfK() > 0) base.setRrfK(ov.getRrfK());
     }
 
     @Override
@@ -114,7 +225,8 @@ public class Memory implements MemoryBase {
         java.util.Map<String, com.oceanbase.powermem.sdk.model.MemoryRecord> unique = new java.util.LinkedHashMap<>();
         java.util.Map<String, float[]> factEmbeddings = new java.util.HashMap<>();
         for (String fact : facts) {
-            float[] vec = embedder.embed(fact, "search");
+            // Sub-store parity: choose embedder based on request metadata.
+            float[] vec = storage.embed(fact, "search", request.getMetadata());
             factEmbeddings.put(fact, vec);
             int topK = 5;
             int candidateLimit = topK;
@@ -289,7 +401,8 @@ public class Memory implements MemoryBase {
         if (rerankEnabled) {
             candidateLimit = Math.max(limit, limit * 3);
         }
-        float[] queryVec = embedder.embed(request.getQuery(), "search");
+        // Sub-store parity: choose embedder based on filters.
+        float[] queryVec = storage.embed(request.getQuery(), "search", request.getFilters());
         java.util.List<com.oceanbase.powermem.sdk.storage.base.OutputData> raw =
                 storage.searchMemories(request.getQuery(), queryVec, candidateLimit, request.getUserId(), request.getAgentId(), request.getRunId(), request.getFilters());
 
@@ -416,7 +529,8 @@ public class Memory implements MemoryBase {
     public com.oceanbase.powermem.sdk.model.GetMemoryResponse get(com.oceanbase.powermem.sdk.model.GetMemoryRequest request) {
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonNull(request, "GetMemoryRequest is required");
         com.oceanbase.powermem.sdk.util.Preconditions.requireNonBlank(request.getMemoryId(), "memoryId is required");
-        com.oceanbase.powermem.sdk.model.MemoryRecord r = vectorStore.get(request.getMemoryId(), request.getUserId(), request.getAgentId());
+        // Sub-store parity: lookup must scan main store and sub stores.
+        com.oceanbase.powermem.sdk.model.MemoryRecord r = storage.getMemory(request.getMemoryId(), request.getUserId(), request.getAgentId());
         if (r != null && plugin != null && plugin.isEnabled()) {
             com.oceanbase.powermem.sdk.intelligence.plugin.IntelligentMemoryPlugin.OnGetResult hook = plugin.onGet(toPayloadMap(r));
             if (hook != null) {
