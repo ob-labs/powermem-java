@@ -9,14 +9,23 @@ package com.oceanbase.powermem.sdk.storage.adapter;
  * <p>Python reference: {@code src/powermem/storage/adapter.py}</p>
  */
 public class StorageAdapter {
-    private final com.oceanbase.powermem.sdk.storage.base.VectorStore vectorStore;
-    private final com.oceanbase.powermem.sdk.integrations.embeddings.Embedder embedder;
+    protected final com.oceanbase.powermem.sdk.storage.base.VectorStore vectorStore;
+    protected final com.oceanbase.powermem.sdk.integrations.embeddings.Embedder embedder;
     private final com.oceanbase.powermem.sdk.util.SnowflakeIdGenerator idGenerator = com.oceanbase.powermem.sdk.util.SnowflakeIdGenerator.defaultGenerator();
 
     public StorageAdapter(com.oceanbase.powermem.sdk.storage.base.VectorStore vectorStore,
                           com.oceanbase.powermem.sdk.integrations.embeddings.Embedder embedder) {
         this.vectorStore = vectorStore;
         this.embedder = embedder;
+    }
+
+    /**
+     * Embed text with optional routing context (used by SubStorageAdapter).
+     *
+     * <p>Default: ignore context and use the main embedder.</p>
+     */
+    public float[] embed(String text, String memoryAction, java.util.Map<String, Object> filtersOrMetadata) {
+        return embedder.embed(text, memoryAction);
     }
 
     public com.oceanbase.powermem.sdk.model.MemoryRecord addMemory(String content,
