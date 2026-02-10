@@ -153,14 +153,14 @@ public class InMemoryGraphStore implements GraphStore {
             String s = raw.trim();
             if (s.isEmpty()) continue;
 
-            // Simple Chinese patterns: "用户喜欢X" / "我喜欢X" / "用户偏好X"
-            Triple t = parseChinesePreference(s);
-            if (t != null) {
-                out.add(t);
+            // Explicit triple format (recommended for tests): "a -- rel -- b"
+            Triple explicit = parseExplicitTriple(s);
+            if (explicit != null) {
+                out.add(explicit);
                 continue;
             }
 
-            // English fallback: "User likes X"
+            // English fallback: "User likes X" / "User prefers X" / "User hates X"
             Triple e = parseEnglishPreference(s);
             if (e != null) {
                 out.add(e);
@@ -169,44 +169,19 @@ public class InMemoryGraphStore implements GraphStore {
         return out;
     }
 
-    private static Triple parseChinesePreference(String s) {
-        String subject = null;
-        String rest = null;
-
-        // normalize punctuation
-        String x = s.replace("：", ":").replace("，", ",").replace("。", ".").trim();
-
-        if (x.startsWith("用户")) {
-            subject = "用户";
-            rest = x.substring(2);
-        } else if (x.startsWith("我")) {
-            subject = "我";
-            rest = x.substring(1);
-        } else {
-            // unknown subject, skip
+    private static Triple parseExplicitTriple(String s) {
+        // e.g. "user -- likes -- coffee"
+        String[] parts = s.split("\\s*--\\s*");
+        if (parts.length != 3) {
             return null;
         }
-
-        if (rest == null) return null;
-        rest = rest.trim();
-
-        String rel;
-        int idx;
-        if ((idx = rest.indexOf("喜欢")) >= 0) {
-            rel = "喜欢";
-        } else if ((idx = rest.indexOf("偏好")) >= 0) {
-            rel = "偏好";
-        } else if ((idx = rest.indexOf("讨厌")) >= 0) {
-            rel = "讨厌";
-        } else {
+        String a = parts[0] == null ? "" : parts[0].trim();
+        String r = parts[1] == null ? "" : parts[1].trim();
+        String b = parts[2] == null ? "" : parts[2].trim();
+        if (a.isEmpty() || r.isEmpty() || b.isEmpty()) {
             return null;
         }
-
-        String obj = rest.substring(idx + rel.length()).trim();
-        if (obj.isEmpty()) {
-            return null;
-        }
-        return new Triple(subject, rel, obj);
+        return new Triple(a, r, b);
     }
 
     private static Triple parseEnglishPreference(String s) {
@@ -221,6 +196,10 @@ public class InMemoryGraphStore implements GraphStore {
         if (idx < 0) {
             idx = lower.indexOf(" prefers ");
             rel = "prefers";
+        }
+        if (idx < 0) {
+            idx = lower.indexOf(" hates ");
+            rel = "hates";
         }
         if (idx < 0) {
             return null;

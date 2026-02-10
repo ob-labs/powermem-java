@@ -62,14 +62,14 @@ public class SubStorageAdapterRoutingTest {
 
         Map<String, Object> metaPref = new HashMap<>();
         metaPref.put("category", "pref");
-        AddMemoryRequest add1 = AddMemoryRequest.ofText("用户喜欢简洁的中文回答");
+        AddMemoryRequest add1 = AddMemoryRequest.ofText("User prefers concise English answers");
         add1.setMetadata(metaPref);
         String idPref = mem.add(add1).getResults().get(0).getId();
         assertNotNull(idPref);
 
         Map<String, Object> metaOther = new HashMap<>();
         metaOther.put("category", "other");
-        AddMemoryRequest add2 = AddMemoryRequest.ofText("用户正在学习Java SDK");
+        AddMemoryRequest add2 = AddMemoryRequest.ofText("User is learning the Java SDK");
         add2.setMetadata(metaOther);
         String idMain = mem.add(add2).getResults().get(0).getId();
         assertNotNull(idMain);
@@ -81,7 +81,7 @@ public class SubStorageAdapterRoutingTest {
         assertEquals(1, all.size());
 
         // search in sub store via filters routing
-        SearchMemoriesRequest s1 = SearchMemoriesRequest.ofQuery("简洁 中文");
+        SearchMemoriesRequest s1 = SearchMemoriesRequest.ofQuery("concise English");
         Map<String, Object> f1 = new HashMap<>();
         f1.put("category", "pref");
         s1.setFilters(f1);
@@ -102,7 +102,7 @@ public class SubStorageAdapterRoutingTest {
         // update: should locate correct store and update there
         UpdateMemoryRequest upd = new UpdateMemoryRequest();
         upd.setMemoryId(idPref);
-        upd.setNewContent("用户喜欢非常简洁的中文回答");
+        upd.setNewContent("User prefers extremely concise English answers");
         upd.setMetadata(metaPref);
         assertNotNull(mem.update(upd).getMemory());
 

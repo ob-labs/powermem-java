@@ -90,7 +90,7 @@ public class MemoryE2eTest {
         meta.put("source", "junit");
         meta.put("category", "preference");
 
-        AddMemoryRequest add = AddMemoryRequest.ofText("用户喜欢简洁的中文回答", userId);
+        AddMemoryRequest add = AddMemoryRequest.ofText("User prefers concise English answers", userId);
         add.setInfer(false);
         add.setAgentId(agentId);
         add.setRunId(runId);
@@ -115,7 +115,7 @@ public class MemoryE2eTest {
         assertEquals(1, allResp.getResults().size());
 
         // search (should include category backfilled into metadata)
-        SearchMemoriesRequest search = SearchMemoriesRequest.ofQuery("简洁 中文", userId);
+        SearchMemoriesRequest search = SearchMemoriesRequest.ofQuery("concise English", userId);
         search.setAgentId(agentId);
         search.setRunId(runId);
         search.setTopK(10);
@@ -145,7 +145,7 @@ public class MemoryE2eTest {
         upd.setUserId(userId);
         upd.setAgentId(agentId);
         upd.setMemoryId(id);
-        upd.setNewContent("用户喜欢简洁、结构化的中文回答");
+        upd.setNewContent("User prefers concise, structured English answers");
         upd.setMetadata(meta);
         var updResp = mem.update(upd);
         assertNotNull(updResp);
@@ -179,8 +179,8 @@ public class MemoryE2eTest {
         req.setAgentId("a2");
         req.setInfer(true);
         req.setMessages(List.of(
-                new com.oceanbase.powermem.sdk.model.Message("user", "我喜欢简洁的中文回答"),
-                new com.oceanbase.powermem.sdk.model.Message("assistant", "好的，我会尽量简洁")
+                new com.oceanbase.powermem.sdk.model.Message("user", "I prefer concise English answers"),
+                new com.oceanbase.powermem.sdk.model.Message("assistant", "Understood. I will keep responses concise.")
         ));
 
         var resp = mem.add(req);
@@ -211,7 +211,7 @@ public class MemoryE2eTest {
         meta.put("source", "junit");
         meta.put("category", "preference");
 
-        AddMemoryRequest add = AddMemoryRequest.ofText("用户喜欢简洁的中文回答");
+        AddMemoryRequest add = AddMemoryRequest.ofText("User prefers concise English answers");
         add.setInfer(false);
         add.setAgentId(agentId);
         add.setRunId(runId);
@@ -234,7 +234,7 @@ public class MemoryE2eTest {
         assertEquals(1, allResp.getResults().size());
 
         // search should find it (scoped by agentId/runId)
-        SearchMemoriesRequest search = SearchMemoriesRequest.ofQuery("简洁 中文");
+        SearchMemoriesRequest search = SearchMemoriesRequest.ofQuery("concise English");
         search.setAgentId(agentId);
         search.setRunId(runId);
         search.setTopK(10);
@@ -261,7 +261,7 @@ public class MemoryE2eTest {
         UpdateMemoryRequest upd = new UpdateMemoryRequest();
         upd.setAgentId(agentId);
         upd.setMemoryId(id);
-        upd.setNewContent("用户喜欢简洁、结构化的中文回答");
+        upd.setNewContent("User prefers concise, structured English answers");
         upd.setMetadata(meta);
         var updResp = mem.update(upd);
         assertNotNull(updResp);
@@ -293,7 +293,7 @@ public class MemoryE2eTest {
         add.setAgentId(agentId);
         add.setRunId(runId);
         add.setInfer(false);
-        add.setText("用户喜欢简洁的中文回答");
+        add.setText("User likes concise English answers");
         var addResp = mem.add(add);
         assertNotNull(addResp);
         assertNotNull(addResp.getResults());
@@ -305,7 +305,7 @@ public class MemoryE2eTest {
         assertTrue(rel.containsKey("added_entities"));
 
         // Search should return relations list (source/relationship/destination)
-        SearchMemoriesRequest search = SearchMemoriesRequest.ofQuery("喜欢 简洁");
+        SearchMemoriesRequest search = SearchMemoriesRequest.ofQuery("likes concise");
         search.setUserId(userId);
         search.setAgentId(agentId);
         search.setRunId(runId);
@@ -316,7 +316,7 @@ public class MemoryE2eTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> graphHits = (List<Map<String, Object>>) searchResp.getRelations();
         assertFalse(graphHits.isEmpty());
-        assertEquals("用户", String.valueOf(graphHits.get(0).get("source")));
+        assertEquals("User", String.valueOf(graphHits.get(0).get("source")));
     }
 }
 

@@ -182,7 +182,7 @@ public class Memory implements MemoryBase {
             counts.put("UPDATE", 0);
             counts.put("DELETE", 0);
             counts.put("NONE", 0);
-            // Python benchmark/server: add() 返回不包含 action_counts；保持为 null 以省略序列化
+            // Python benchmark/server: add() response does not include action_counts; keep null to omit serialization.
             resp.setActionCounts(null);
             // Python parity: when graph is enabled, return relations even if empty.
             resp.setRelations(graphResult == null ? java.util.Collections.emptyMap() : graphResult);
@@ -361,7 +361,7 @@ public class Memory implements MemoryBase {
         }
         com.oceanbase.powermem.sdk.model.AddMemoryResponse resp = new com.oceanbase.powermem.sdk.model.AddMemoryResponse(results);
         resp.setResults(resultDtos);
-        // Python benchmark/server: add() 返回不包含 action_counts；保持为 null 以省略序列化
+        // Python benchmark/server: add() response does not include action_counts; keep null to omit serialization.
         resp.setActionCounts(null);
         // relations reserved for graph-store parity
         resp.setRelations(null);
@@ -383,7 +383,7 @@ public class Memory implements MemoryBase {
         dto.setUserId(r.getUserId());
         dto.setAgentId(r.getAgentId());
         dto.setRunId(r.getRunId());
-        // Python parity: 返回 metadata 应保留调用方传入的原始 metadata（包含 category）
+        // Python parity: return the caller-provided metadata (including category) when available.
         dto.setMetadata(requestMetadata != null ? requestMetadata : r.getMetadata());
         dto.setCreatedAt(r.getCreatedAt() == null ? null : r.getCreatedAt().toString());
         dto.setPreviousMemory(previousMemory);
