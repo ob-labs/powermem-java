@@ -76,7 +76,7 @@ public class OceanBaseMemoryE2eIT {
         Map<String, Object> meta1 = new HashMap<>();
         meta1.put("category", "preference");
         meta1.put("source", "it");
-        AddMemoryRequest add1 = AddMemoryRequest.ofText("用户喜欢简洁的中文回答", userId);
+        AddMemoryRequest add1 = AddMemoryRequest.ofText("User prefers concise English answers", userId);
         add1.setInfer(false);
         add1.setAgentId(agentId);
         add1.setRunId(runId);
@@ -98,7 +98,7 @@ public class OceanBaseMemoryE2eIT {
         String anyId = String.valueOf(all.getResults().get(0).get("id"));
         assertNotNull(anyId);
 
-        SearchMemoriesRequest search = SearchMemoriesRequest.ofQuery("用户偏好是什么？", userId);
+        SearchMemoriesRequest search = SearchMemoriesRequest.ofQuery("What does the user prefer?", userId);
         search.setAgentId(agentId);
         search.setRunId(runId);
         search.setTopK(5);
@@ -117,7 +117,7 @@ public class OceanBaseMemoryE2eIT {
         upd.setMemoryId(anyId);
         upd.setUserId(userId);
         upd.setAgentId(agentId);
-        upd.setNewContent("用户喜欢非常简洁的中文回答（已更新）");
+        upd.setNewContent("User prefers extremely concise English answers (updated)");
         var u = mem.update(upd);
         assertNotNull(u);
         assertNotNull(u.getMemory());

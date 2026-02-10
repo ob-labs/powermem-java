@@ -979,11 +979,6 @@ public class OceanBaseGraphStore implements GraphStore {
                 out.add(explicit);
                 continue;
             }
-            RelationTriple t = parseChinesePreference(s);
-            if (t != null) {
-                out.add(t);
-                continue;
-            }
             RelationTriple e = parseEnglishPreference(s);
             if (e != null) out.add(e);
         }
@@ -1003,31 +998,6 @@ public class OceanBaseGraphStore implements GraphStore {
         return new RelationTriple(src, rel, dst);
     }
 
-    private static RelationTriple parseChinesePreference(String s) {
-        String x = s.replace("：", ":").replace("，", ",").replace("。", ".").trim();
-        String subject;
-        String rest;
-        if (x.startsWith("用户")) {
-            subject = "用户";
-            rest = x.substring(2);
-        } else if (x.startsWith("我")) {
-            subject = "我";
-            rest = x.substring(1);
-        } else {
-            return null;
-        }
-        rest = rest.trim();
-        String rel;
-        int idx;
-        if ((idx = rest.indexOf("喜欢")) >= 0) rel = "喜欢";
-        else if ((idx = rest.indexOf("偏好")) >= 0) rel = "偏好";
-        else if ((idx = rest.indexOf("讨厌")) >= 0) rel = "讨厌";
-        else return null;
-        String obj = rest.substring(idx + rel.length()).trim();
-        if (obj.isEmpty()) return null;
-        return new RelationTriple(normalizeName(subject), normalizeName(rel), normalizeName(obj));
-    }
-
     private static RelationTriple parseEnglishPreference(String s) {
         String x = s.trim();
         String lower = x.toLowerCase(Locale.ROOT);
@@ -1037,6 +1007,10 @@ public class OceanBaseGraphStore implements GraphStore {
         if (idx < 0) {
             idx = lower.indexOf(" prefers ");
             rel = "prefers";
+        }
+        if (idx < 0) {
+            idx = lower.indexOf(" hates ");
+            rel = "hates";
         }
         if (idx < 0) return null;
         String obj = x.substring(idx + (" " + rel + " ").length()).trim();
@@ -1154,7 +1128,9 @@ public class OceanBaseGraphStore implements GraphStore {
 
     private static final class EntityRow {
         final long id;
+        @SuppressWarnings("unused")
         final String name;
+        @SuppressWarnings("unused")
         final String entityType;
         final double distance;
         EntityRow(long id, String name, String entityType, double distance) {

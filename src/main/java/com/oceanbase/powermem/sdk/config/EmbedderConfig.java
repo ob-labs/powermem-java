@@ -14,6 +14,16 @@ public class EmbedderConfig {
 
     public EmbedderConfig() {}
 
+    public EmbedderConfig copy() {
+        EmbedderConfig c = new EmbedderConfig();
+        c.setProvider(this.provider);
+        c.setApiKey(this.apiKey);
+        c.setModel(this.model);
+        c.setEmbeddingDims(this.embeddingDims);
+        c.setBaseUrl(this.baseUrl);
+        return c;
+    }
+
     public static EmbedderConfig qwen(String apiKey, String model, int dims) {
         EmbedderConfig config = new EmbedderConfig();
         config.setProvider("qwen");
